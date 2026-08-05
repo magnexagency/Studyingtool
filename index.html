@@ -698,18 +698,61 @@
  navFocus.classList.remove('active');
  });
 
- // ---- TIMER ----
- let timerMinutes = 25;
- let timerSeconds = 0;
+ // ---- ACCURATE TIMER (Like Google Timer) ----
+ let timerEndTime = null;
  let timerInterval = null;
  let timerRunning = false;
  let currentTimerDuration = 25;
  let currentTimerPoints = 12.5;
  let focusCheckTimeout = null;
+ let timerPausedTime = null; // Track remaining time when paused
 
  function updateTimerDisplay(){
- document.getElementById('timer-display').textContent =
- `${String(timerMinutes).padStart(2,'0')}:${String(timerSeconds).padStart(2,'0')}`;
+ if(!timerRunning && timerPausedTime === null){
+ // Initial display
+ const mins = currentTimerDuration;
+ document.getElementById('timer-display').textContent = 
+ `${String(mins).padStart(2,'0')}:00`;
+ return;
+ }
+
+ let remainingMs;
+ 
+ if(timerRunning){
+ // Timer is running - calculate from end time
+ remainingMs = timerEndTime - Date.now();
+ } else if(timerPausedTime !== null){
+ // Timer is paused - use stored time
+ remainingMs = timerPausedTime;
+ } else {
+ remainingMs = 0;
+ }
+
+ if(remainingMs <= 0){
+ // Timer finished
+ clearInterval(timerInterval);
+ if(focusCheckTimeout) clearTimeout(focusCheckTimeout);
+ timerRunning = false;
+ timerEndTime = null;
+ timerPausedTime = null;
+ document.getElementById('timer-start').textContent = 'Start';
+ document.getElementById('timer-display').textContent = '00:00';
+ completeLap();
+ 
+ // Reset to selected duration
+ const activeMode = document.querySelector('.mode-btn.active');
+ currentTimerDuration = activeMode ? parseInt(activeMode.dataset.min, 10) : 25;
+ updateTimerDisplay();
+ return;
+ }
+
+ // Calculate minutes and seconds
+ const totalSeconds = Math.ceil(remainingMs / 1000);
+ const mins = Math.floor(totalSeconds / 60);
+ const secs = totalSeconds % 60;
+
+ document.getElementById('timer-display').textContent = 
+ `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
  }
 
  function scheduleFocusCheck(){
@@ -717,10 +760,10 @@
  
  if(currentTimerDuration === 1) return;
  
- const durationSeconds = currentTimerDuration * 60;
- const minTime = durationSeconds * 0.3;
- const maxTime = durationSeconds * 0.7;
- const randomTime = (Math.random() * (maxTime - minTime) + minTime) * 1000;
+ const durationMs = currentTimerDuration * 60 * 1000;
+ const minTime = durationMs * 0.3;
+ const maxTime = durationMs * 0.7;
+ const randomTime = Math.random() * (maxTime - minTime) + minTime;
  
  focusCheckTimeout = setTimeout(() => {
  if(timerRunning){
@@ -750,59 +793,61 @@
  if(timerRunning) return;
  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
  btn.classList.add('active');
- timerMinutes = parseInt(btn.dataset.min, 10);
- timerSeconds = 0;
- currentTimerDuration = timerMinutes;
+ currentTimerDuration = parseInt(btn.dataset.min, 10);
  currentTimerPoints = parseFloat(btn.dataset.points);
+ timerPausedTime = null;
  updateTimerDisplay();
  });
  });
 
  document.getElementById('timer-start').addEventListener('click', function(){
  if(timerRunning){
+ // Pause
  clearInterval(timerInterval);
  if(focusCheckTimeout) clearTimeout(focusCheckTimeout);
+ 
+ // Store remaining time
+ timerPausedTime = timerEndTime - Date.now();
+ 
  timerRunning = false;
+ timerEndTime = null;
  this.textContent = 'Start';
+ updateTimerDisplay();
  return;
  }
+ 
+ // Start or Resume
  timerRunning = true;
  this.textContent = 'Pause';
  
+ // Set end time
+ if(timerPausedTime !== null){
+ // Resume from paused time
+ timerEndTime = Date.now() + timerPausedTime;
+ } else {
+ // Fresh start
+ timerEndTime = Date.now() + (currentTimerDuration * 60 * 1000);
+ }
+ 
  scheduleFocusCheck();
  
- timerInterval = setInterval(() => {
- if(timerSeconds === 0){
- if(timerMinutes === 0){
- clearInterval(timerInterval);
- if(focusCheckTimeout) clearTimeout(focusCheckTimeout);
- timerRunning = false;
- document.getElementById('timer-start').textContent = 'Start';
- completeLap();
- const activeMode = document.querySelector('.mode-btn.active');
- timerMinutes = activeMode ? parseInt(activeMode.dataset.min, 10) : 25;
- timerSeconds = 0;
+ // Update every 100ms for smooth countdown
+ timerInterval = setInterval(updateTimerDisplay, 100);
  updateTimerDisplay();
- return;
- }
- timerMinutes -= 1;
- timerSeconds = 59;
- } else {
- timerSeconds -= 1;
- }
- updateTimerDisplay();
- }, 1000);
  });
 
  document.getElementById('timer-reset').addEventListener('click', () => {
  clearInterval(timerInterval);
  if(focusCheckTimeout) clearTimeout(focusCheckTimeout);
  timerRunning = false;
+ timerEndTime = null;
+ timerPausedTime = null;
  document.getElementById('timer-start').textContent = 'Start';
+ 
  const activeMode = document.querySelector('.mode-btn.active');
- timerMinutes = activeMode ? parseInt(activeMode.dataset.min, 10) : 25;
- timerSeconds = 0;
- currentTimerDuration = timerMinutes;
+ currentTimerDuration = activeMode ? parseInt(activeMode.dataset.min, 10) : 25;
+ currentTimerPoints = activeMode ? parseFloat(activeMode.dataset.points) : 12.5;
+ 
  updateTimerDisplay();
  });
 
@@ -938,13 +983,11 @@
 
  async function getGroqResponse(userMessage){
  try {
- // Add user message to history
  state.chatHistory.push({
  role: "user",
  content: userMessage
  });
 
- // Add context about their study progress
  const contextMessage = `[Current user stats: ${state.points.toFixed(1)} points earned, ${state.laps} study sessions completed, ${state.tasks.filter(t => t.done).length}/${state.tasks.length} tasks done today]`;
  
  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -975,16 +1018,14 @@
  const data = await response.json();
  const aiMessage = data.choices[0].message.content;
 
- // Add AI response to history
  state.chatHistory.push({
  role: "assistant",
  content: aiMessage
  });
 
- // Keep only last 20 messages to avoid token limits
  if(state.chatHistory.length > 21){
  state.chatHistory = [
- state.chatHistory[0], // Keep system message
+ state.chatHistory[0],
  ...state.chatHistory.slice(-20)
  ];
  }
