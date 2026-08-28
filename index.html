@@ -406,7 +406,19 @@
  
  /* Playlist section */
  .playlist-section{ margin-top:20px; padding-top:16px; border-top:1px solid var(--line); text-align:left; }
- .playlist-title{ font-size:13px; color:var(--text-dim); font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+ .reset-btn{
+   background:none; border:none; color:var(--text-dim); font-family:var(--font);
+   font-size:12px; font-weight:600; cursor:pointer; text-decoration:underline;
+   padding:4px 2px;
+ }
+ .reset-btn:hover{ color:var(--orange); }
+ .playlist-title{ font-size:13px; color:var(--text-dim); font-weight:600; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+ .playlist-backup-btns{ display:flex; gap:10px; }
+ .playlist-backup-btns button{
+   background:none; border:none; color:var(--text-dim); font-family:var(--font);
+   font-size:11.5px; font-weight:600; cursor:pointer; text-decoration:underline; padding:0;
+ }
+ .playlist-backup-btns button:hover{ color:var(--orange); }
  .playlist-add-row{ display:flex; gap:8px; margin-bottom:10px; }
  .playlist-add-row input{
    flex:1; background:var(--card-soft); border:1px solid var(--line);
@@ -516,8 +528,18 @@
  <div class="laps-dots" id="laps-dots"></div>
  </div>
 
+ <div style="text-align:right; margin-top:6px;">
+ <button class="reset-btn" id="reset-progress-btn">Reset laps &amp; points</button>
+ </div>
+
  <div class="playlist-section">
- <div class="playlist-title">🎵 Your Reward Playlist</div>
+ <div class="playlist-title">
+ <span>🎵 Your Reward Playlist</span>
+ <div class="playlist-backup-btns">
+ <button id="playlist-export-btn">Export</button>
+ <button id="playlist-import-btn">Import</button>
+ </div>
+ </div>
  <div class="playlist-add-row">
  <input type="text" id="playlist-input" placeholder="Paste a YouTube link or video ID...">
  <button class="playlist-add-btn" id="playlist-add-btn">+</button>
@@ -588,7 +610,14 @@
 <script>
  const STORAGE_KEY = 'studyQuestState_v4';
  const GROQ_API_KEY = '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';
- 
+
+ // Shown by default so a fresh browser (or one that's had its data cleared)
+ // isn't stuck with an empty playlist. Fully editable/removable like any other entry.
+ const DEFAULT_PLAYLIST = [
+ { id: 'jfKfPfyJRdk', title: 'lofi hip hop radio 📚 beats to relax/study to' },
+ { id: '5qap5aO4i9A', title: 'lofi hip hop radio 😴 beats to sleep/chill to' }
+ ];
+
  function loadState(){
  const raw = localStorage.getItem(STORAGE_KEY);
  if(raw){
@@ -599,7 +628,7 @@
  return parsed;
  }catch(e){}
  }
- return { tasks: [], laps: 0, points: 0, chatHistory: [], playlist: [], lastVideoId: null };
+ return { tasks: [], laps: 0, points: 0, chatHistory: [], playlist: DEFAULT_PLAYLIST.slice(), lastVideoId: null };
  }
 
  let state = loadState();
@@ -928,6 +957,15 @@
  saveState();
  }
 
+ document.getElementById('reset-progress-btn').addEventListener('click', () => {
+ const ok = confirm('Reset your laps completed and study points back to 0? This can\'t be undone.');
+ if(!ok) return;
+ state.laps = 0;
+ state.points = 0;
+ renderLaps();
+ updatePoints();
+ });
+
  function completeLap(){
  state.laps += 1;
  renderLaps();
@@ -1026,6 +1064,39 @@
  if(entry) entry.title = title;
  renderPlaylist();
  }
+
+ // ---- PLAYLIST BACKUP (survives clearing browser data) ----
+ document.getElementById('playlist-export-btn').addEventListener('click', async () => {
+ if(state.playlist.length === 0){
+ alert('Your playlist is empty — nothing to export yet.');
+ return;
+ }
+ const code = btoa(unescape(encodeURIComponent(JSON.stringify(state.playlist))));
+ try{
+ await navigator.clipboard.writeText(code);
+ alert('Playlist backup copied to your clipboard!\n\nPaste it somewhere safe (notes app, etc). Use "Import" to restore it later, even in a different browser.');
+ }catch(e){
+ prompt('Copy this backup code and save it somewhere safe:', code);
+ }
+ });
+
+ document.getElementById('playlist-import-btn').addEventListener('click', () => {
+ const code = prompt('Paste your playlist backup code here:');
+ if(!code) return;
+ try{
+ const restored = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
+ if(!Array.isArray(restored)) throw new Error('bad format');
+ restored.forEach(item => {
+ if(item && item.id && !state.playlist.some(x => x.id === item.id)){
+ state.playlist.push({ id: item.id, title: item.title || 'YouTube video' });
+ }
+ });
+ renderPlaylist();
+ alert('Playlist restored!');
+ }catch(e){
+ alert("That doesn't look like a valid backup code.");
+ }
+ });
 
  // Load the YouTube IFrame Player API asynchronously.
  let ytPlayer = null;
