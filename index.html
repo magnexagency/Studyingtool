@@ -404,6 +404,47 @@
  color:var(--text);
  }
  
+ /* Playlist section */
+ .playlist-section{ margin-top:20px; padding-top:16px; border-top:1px solid var(--line); text-align:left; }
+ .playlist-title{ font-size:13px; color:var(--text-dim); font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+ .playlist-add-row{ display:flex; gap:8px; margin-bottom:10px; }
+ .playlist-add-row input{
+   flex:1; background:var(--card-soft); border:1px solid var(--line);
+   border-radius:12px; padding:10px 12px; font-family:var(--font); font-size:13px; color:var(--text);
+ }
+ .playlist-add-row input:focus{ outline:none; border-color:var(--orange); }
+ .playlist-add-btn{
+   width:38px; height:38px; border-radius:12px; background:var(--black); color:#fff;
+   border:none; font-size:18px; cursor:pointer; flex-shrink:0;
+ }
+ .playlist-empty{ font-size:12.5px; color:var(--text-dim); padding:6px 2px; }
+ .playlist-list{ max-height:160px; overflow-y:auto; }
+ .playlist-item{
+   display:flex; align-items:center; gap:10px; padding:8px 4px;
+   border-bottom:1px solid var(--line); font-size:13px;
+ }
+ .playlist-item:last-child{ border-bottom:none; }
+ .playlist-item-thumb{ width:36px; height:36px; border-radius:8px; object-fit:cover; flex-shrink:0; background:var(--card-soft); }
+ .playlist-item-title{ flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+ .playlist-item-del{ color:var(--text-dim); background:none; border:none; font-size:17px; cursor:pointer; padding:4px; flex-shrink:0; }
+
+ /* YouTube video widget */
+ #yt-video-widget{
+   position:fixed; left:50%; bottom:90px; transform:translateX(-50%) translateY(140%) scale(0.95);
+   width:280px; max-width:90vw; background:var(--black); border-radius:18px; padding:8px;
+   box-shadow:0 20px 40px -15px rgba(0,0,0,0.5); z-index:51;
+   opacity:0; transition:transform 0.4s cubic-bezier(.2,.9,.3,1), opacity 0.3s ease;
+   pointer-events:none;
+ }
+ #yt-video-widget.show{ transform:translateX(-50%) translateY(0) scale(1); opacity:1; pointer-events:all; }
+ #youtube-player-wrap{ width:100%; aspect-ratio:16/9; border-radius:12px; overflow:hidden; background:#000; }
+ #youtube-player-wrap iframe{ width:100%; height:100%; display:block; }
+ .yt-widget-controls{ display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
+ .yt-mute-btn{
+   background:rgba(255,255,255,0.12); border:none; color:#fff; border-radius:10px;
+   padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer;
+ }
+
  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
 </style>
 </head>
@@ -474,6 +515,15 @@
  <div class="laps-count">Laps completed: <span id="lap-count">0</span></div>
  <div class="laps-dots" id="laps-dots"></div>
  </div>
+
+ <div class="playlist-section">
+ <div class="playlist-title">🎵 Your Reward Playlist</div>
+ <div class="playlist-add-row">
+ <input type="text" id="playlist-input" placeholder="Paste a YouTube link or video ID...">
+ <button class="playlist-add-btn" id="playlist-add-btn">+</button>
+ </div>
+ <div class="playlist-list" id="playlist-list"></div>
+ </div>
  </div>
  </div>
 
@@ -513,9 +563,16 @@
  </div>
 </div>
 
+<div id="yt-video-widget">
+ <div id="youtube-player-wrap"><div id="youtube-player"></div></div>
+ <div class="yt-widget-controls">
+ <button class="yt-mute-btn" id="yt-mute-btn">🔇 Unmute</button>
+ </div>
+</div>
+
 <div id="chill-banner">
- <span class="note">🎧</span>
- <span id="chill-text">here's your chill moment</span>
+ <span class="note">🎵</span>
+ <span id="chill-text">here's your reward video</span>
  <button id="chill-stop">Stop</button>
 </div>
 
@@ -528,24 +585,21 @@
  </div>
 </div>
 
-<audio id="chill-audio" preload="metadata"></audio>
-
 <script>
- const STORAGE_KEY = 'studyQuestState_v3';
+ const STORAGE_KEY = 'studyQuestState_v4';
  const GROQ_API_KEY = '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';
  
- const TRACKS = [
- "https://res.cloudinary.com/dazk46eqa/video/upload/v1785502463/YTDown.com_YouTube_Clean-Bandit-Rockabye-Lyrics-Feat-Sean-P_Media_5u1GjIaeRSk_001_1080p_sjdcai.mp3",
- "https://res.cloudinary.com/dazk46eqa/video/upload/v1785502486/YTDown.com_YouTube_Deep-Atmosphere-1_Media_65W8LM2sJKo_001_1080p_liyypb.mp3",
- "https://res.cloudinary.com/dazk46eqa/video/upload/v1785502504/YTDown.com_YouTube_Deep-Atmosphere-1_Media_65W8LM2sJKo_001_1080p_uzyrhi.mp3",
- "https://res.cloudinary.com/dazk46eqa/video/upload/v1785502545/YTDown.com_YouTube_Media_Otu-xMMZ-GU_001_1080p_res5d0.mp3",
- "https://res.cloudinary.com/dazk46eqa/video/upload/v1785502606/YTDown.com_YouTube_Media_5omv3DRynBY_001_1080p_zpki6f.mp3"
- ];
-
  function loadState(){
  const raw = localStorage.getItem(STORAGE_KEY);
- if(raw){ try{ return JSON.parse(raw); }catch(e){} }
- return { tasks: [], laps: 0, lastTrackIndex: -1, points: 0, chatHistory: [] };
+ if(raw){
+ try{
+ const parsed = JSON.parse(raw);
+ if(!Array.isArray(parsed.playlist)) parsed.playlist = [];
+ if(typeof parsed.lastVideoId === 'undefined') parsed.lastVideoId = null;
+ return parsed;
+ }catch(e){}
+ }
+ return { tasks: [], laps: 0, points: 0, chatHistory: [], playlist: [], lastVideoId: null };
  }
 
  let state = loadState();
@@ -883,54 +937,188 @@
  playRandomTrack();
  }
 
- // ---- MUSIC ----
- const audio = document.getElementById('chill-audio');
+ // ---- YOUTUBE PLAYLIST + REWARD PLAYER ----
  const banner = document.getElementById('chill-banner');
+ const chillText = document.getElementById('chill-text');
+ const ytWidget = document.getElementById('yt-video-widget');
+ const muteBtn = document.getElementById('yt-mute-btn');
+ const playlistInput = document.getElementById('playlist-input');
+ const playlistList = document.getElementById('playlist-list');
 
- function pickTrackIndex(){
- if(TRACKS.length === 1) return 0;
- let idx;
- do { idx = Math.floor(Math.random() * TRACKS.length); }
- while(idx === state.lastTrackIndex);
- return idx;
+ // Turns any pasted YouTube URL (or bare ID) into an 11-char video ID.
+ function extractYouTubeId(input){
+ const text = input.trim();
+ if(/^[a-zA-Z0-9_-]{11}$/.test(text)) return text; // already a bare ID
+ const patterns = [
+ /(?:youtube\.com\/watch\?v=|youtube\.com\/live\/|youtube\.com\/shorts\/|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/
+ ];
+ for(const re of patterns){
+ const m = text.match(re);
+ if(m) return m[1];
+ }
+ try{
+ const url = new URL(text);
+ const v = url.searchParams.get('v');
+ if(v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+ }catch(e){ /* not a valid URL, ignore */ }
+ return null;
+ }
+
+ async function fetchVideoTitle(id){
+ try{
+ const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`);
+ if(!res.ok) throw new Error('oEmbed failed');
+ const data = await res.json();
+ return data.title || 'YouTube video';
+ }catch(e){
+ return 'YouTube video';
+ }
+ }
+
+ function renderPlaylist(){
+ playlistList.innerHTML = '';
+ if(state.playlist.length === 0){
+ playlistList.innerHTML = '<div class="playlist-empty">No videos yet — add one above. A random pick plays each time you finish a timer!</div>';
+ saveState();
+ return;
+ }
+ state.playlist.forEach(item => {
+ const row = document.createElement('div');
+ row.className = 'playlist-item';
+ row.innerHTML = `
+ <img class="playlist-item-thumb" src="https://img.youtube.com/vi/${item.id}/default.jpg" alt="">
+ <div class="playlist-item-title">${item.title}</div>
+ <button class="playlist-item-del" data-id="${item.id}">×</button>
+ `;
+ playlistList.appendChild(row);
+ });
+ saveState();
+ }
+
+ playlistList.addEventListener('click', (e) => {
+ const del = e.target.closest('.playlist-item-del');
+ if(del){
+ state.playlist = state.playlist.filter(x => x.id !== del.dataset.id);
+ renderPlaylist();
+ }
+ });
+
+ document.getElementById('playlist-add-btn').addEventListener('click', addPlaylistItem);
+ playlistInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') addPlaylistItem(); });
+
+ async function addPlaylistItem(){
+ const raw = playlistInput.value;
+ const id = extractYouTubeId(raw);
+ if(!id){
+ alert("Couldn't recognize that as a YouTube link or video ID. Try pasting a full youtube.com/watch?v=... link.");
+ return;
+ }
+ if(state.playlist.some(x => x.id === id)){
+ playlistInput.value = '';
+ return;
+ }
+ playlistInput.value = '';
+ const placeholder = { id, title: 'Loading title…' };
+ state.playlist.push(placeholder);
+ renderPlaylist();
+ const title = await fetchVideoTitle(id);
+ const entry = state.playlist.find(x => x.id === id);
+ if(entry) entry.title = title;
+ renderPlaylist();
+ }
+
+ // Load the YouTube IFrame Player API asynchronously.
+ let ytPlayer = null;
+ let ytApiReady = false;
+ let pendingVideoId = null;
+
+ function loadYouTubeAPI(){
+ const tag = document.createElement('script');
+ tag.src = 'https://www.youtube.com/iframe_api';
+ document.head.appendChild(tag);
+ }
+
+ window.onYouTubeIframeAPIReady = function(){
+ ytApiReady = true;
+ ytPlayer = new YT.Player('youtube-player', {
+ height: '100%',
+ width: '100%',
+ playerVars: { rel: 0, playsinline: 1 },
+ events: {
+ onReady: () => { if(pendingVideoId) startPlayback(pendingVideoId); },
+ onStateChange: onPlayerStateChange
+ }
+ });
+ };
+
+ function onPlayerStateChange(event){
+ if(event.data === YT.PlayerState.ENDED){
+ hideRewardVideo();
+ }
+ }
+
+ function pickPlaylistItem(){
+ const list = state.playlist;
+ if(list.length === 0) return null;
+ if(list.length === 1) return list[0];
+ let choice;
+ do { choice = list[Math.floor(Math.random() * list.length)]; }
+ while(choice.id === state.lastVideoId);
+ return choice;
+ }
+
+ function startPlayback(videoId){
+ // Start muted first — browsers reliably allow muted autoplay.
+ // Most users can then tap "Unmute" since the timer completion follows
+ // an earlier click, keeping the tab's audio activation fresh.
+ ytPlayer.mute();
+ muteBtn.textContent = '🔇 Unmute';
+ ytPlayer.loadVideoById(videoId);
+ ytPlayer.playVideo();
  }
 
  function playRandomTrack(){
- const idx = pickTrackIndex();
- state.lastTrackIndex = idx;
- saveState();
- 
- audio.src = TRACKS[idx];
- audio.load();
- 
- const playPromise = audio.play();
- 
- if (playPromise !== undefined) {
- playPromise.then(() => {
- console.log('Music playing successfully');
- }).catch(error => {
- console.log('Autoplay prevented:', error);
- });
- }
- 
- document.getElementById('chill-text').textContent = "here's your chill moment";
+ if(state.playlist.length === 0){
+ chillText.textContent = 'Add videos to your playlist to unlock reward videos! 🎵';
  banner.classList.add('show');
+ setTimeout(() => banner.classList.remove('show'), 4000);
+ return;
  }
 
- document.getElementById('chill-stop').addEventListener('click', () => {
- audio.pause();
- audio.currentTime = 0;
+ const item = pickPlaylistItem();
+ if(!item) return;
+ state.lastVideoId = item.id;
+ saveState();
+
+ chillText.textContent = `Now playing: ${item.title}`;
+ banner.classList.add('show');
+ ytWidget.classList.add('show');
+
+ if(ytApiReady && ytPlayer && typeof ytPlayer.loadVideoById === 'function'){
+ startPlayback(item.id);
+ } else {
+ pendingVideoId = item.id;
+ }
+ }
+
+ function hideRewardVideo(){
+ if(ytPlayer && typeof ytPlayer.stopVideo === 'function') ytPlayer.stopVideo();
+ ytWidget.classList.remove('show');
  banner.classList.remove('show');
+ }
+
+ muteBtn.addEventListener('click', () => {
+ if(!ytPlayer) return;
+ if(ytPlayer.isMuted()){
+ ytPlayer.unMute();
+ muteBtn.textContent = '🔊 Mute';
+ } else {
+ ytPlayer.mute();
+ muteBtn.textContent = '🔇 Unmute';
+ }
  });
 
- audio.addEventListener('ended', () => {
- banner.classList.remove('show');
- });
-
- audio.addEventListener('error', (e) => {
- console.error('Audio error:', e);
- banner.classList.remove('show');
- });
+ document.getElementById('chill-stop').addEventListener('click', hideRewardVideo);
 
  // ---- GROQ AI CHAT ----
  const chatMessages = document.getElementById('chat-messages');
@@ -1098,6 +1286,8 @@
  renderTasks();
  renderLaps();
  updatePoints();
+ renderPlaylist();
+ loadYouTubeAPI();
 </script>
 </body>
 </html>
