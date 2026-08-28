@@ -1139,13 +1139,27 @@
  }
 
  function startPlayback(videoId){
- // Start muted first — browsers reliably allow muted autoplay.
- // Most users can then tap "Unmute" since the timer completion follows
- // an earlier click, keeping the tab's audio activation fresh.
+ // Try to play with sound first — since this follows the user having
+ // already interacted with the page (clicking Start), most browsers allow it.
+ ytPlayer.loadVideoById(videoId);
+ ytPlayer.unMute();
+ ytPlayer.setVolume(100);
+ ytPlayer.playVideo();
+ muteBtn.textContent = '🔊 Mute';
+
+ // Safety net: some browsers still silently block unmuted autoplay outside
+ // a direct click. If playback hasn't actually started shortly after, fall
+ // back to a muted autoplay (always allowed) and let the user tap Unmute.
+ setTimeout(() => {
+ try{
+ const s = ytPlayer.getPlayerState();
+ if(s !== YT.PlayerState.PLAYING && s !== YT.PlayerState.BUFFERING){
  ytPlayer.mute();
  muteBtn.textContent = '🔇 Unmute';
- ytPlayer.loadVideoById(videoId);
  ytPlayer.playVideo();
+ }
+ }catch(e){ /* player not ready to query yet, ignore */ }
+ }, 1200);
  }
 
  function playRandomTrack(){
